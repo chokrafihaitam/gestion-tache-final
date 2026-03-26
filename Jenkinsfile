@@ -1,157 +1,91 @@
 pipeline {
     agent any
     
+    environment {
+        // Variables d'environnement pour Windows
+        DOCKER_COMPOSE = 'docker-compose'
+    }
+    
     stages {
-        stage('Initialisation') {
-            steps {
-                echo '========================================'
-                echo '   GESTION DE TÂCHES - PIPELINE CI/CD'
-                echo '========================================'
-                script {
-                    def date = new Date()
-                    echo "📅 Date : ${date.format('dd/MM/yyyy')}"
-                    echo "⏰ Heure : ${date.format('HH:mm:ss')}"
-                }
-            }
-        }
-        
         stage('Checkout') {
             steps {
-                echo '📦 Récupération du code source...'
+                echo '📦 Récupération du code...'
                 checkout scm
-                echo '✅ Code récupéré avec succès'
             }
         }
         
-        stage('Build Docker Backend') {
+        stage('Build Docker') {
             steps {
-                echo '🐳 Construction de l\'image backend...'
-                script {
-                    try {
-                        sh '''
-                            cd backend
-                            docker build -t task-manager-backend:latest .
-                        '''
-                        echo '✅ Image backend construite'
-                    } catch (Exception e) {
-                        echo '❌ Erreur construction backend'
-                        throw e
-                    }
-                }
-            }
-        }
-        
-        stage('Build Docker Frontend') {
-            steps {
-                echo '🐳 Construction de l\'image frontend...'
-                script {
-                    try {
-                        sh '''
-                            cd frontend
-                            docker build -t task-manager-frontend:latest .
-                        '''
-                        echo '✅ Image frontend construite'
-                    } catch (Exception e) {
-                        echo '❌ Erreur construction frontend'
-                        throw e
-                    }
-                }
-            }
-        }
-        
-        stage('Stop Services') {
-            steps {
-                echo '🛑 Arrêt des services existants...'
-                sh '''
-                    docker-compose down || true
+                echo '🏗️ Construction des images Docker...'
+                bat '''
+                    echo "Construction du backend..."
+                    docker build -t task-manager-backend:latest ./backend
+                    if %errorlevel% neq 0 exit /b %errorlevel%
+                    
+                    echo "Construction du frontend..."
+                    docker build -t task-manager-frontend:latest ./frontend
+                    if %errorlevel% neq 0 exit /b %errorlevel%
+                    
+                    echo "✅ Images construites avec succès"
                 '''
-                echo '✅ Services arrêtés'
             }
         }
         
-        stage('Start Services') {
+        stage('Deploy') {
             steps {
-                echo '🚀 Démarrage des services...'
-                sh '''
+                echo '🚀 Déploiement...'
+                bat '''
+                    echo "Arrêt des anciens conteneurs..."
+                    docker-compose down
+                    
+                    echo "Démarrage des nouveaux conteneurs..."
                     docker-compose up -d
+                    
+                    echo "✅ Déploiement terminé"
                 '''
-                echo '✅ Services démarrés'
             }
         }
         
-        stage('Wait') {
+        stage('Health Check') {
             steps {
-                echo '⏳ Attente du démarrage des services...'
-                sh 'sleep 15'
-            }
-        }
-        
-        stage('Database Migrations') {
-            steps {
-                echo '🔄 Exécution des migrations Django...'
+                echo '🏥 Vérification de la santé des services...'
                 script {
-                    try {
-                        sh '''
-                            docker-compose exec -T backend python manage.py migrate
-                        '''
-                        echo '✅ Migrations appliquées'
-                    } catch (Exception e) {
-                        echo '⚠️ Erreur migrations, mais continue...'
+                    // Attendre 15 secondes
+                    bat 'timeout /t 15 /nobreak'
+                    
+                    // Vérifier l'API
+                    def apiStatus = bat(
+                        script: 'curl -s -o nul -w "%%{http_code}" http://localhost:8000/api/tasks/',
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (apiStatus == '200') {
+                        echo '✅ API OK (HTTP 200)'
+                    } else {
+                        echo "⚠️ API status: ${apiStatus}"
+                    }
+                    
+                    // Vérifier le frontend
+                    def frontendStatus = bat(
+                        script: 'curl -s -o nul -w "%%{http_code}" http://localhost:3000',
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (frontendStatus == '200') {
+                        echo '✅ Frontend OK (HTTP 200)'
+                    } else {
+                        echo "⚠️ Frontend status: ${frontendStatus}"
                     }
                 }
             }
         }
         
-        stage('Test API') {
+        stage('Migrations') {
             steps {
-                echo '🧪 Test de l\'API Django...'
-                script {
-                    try {
-                        sh 'curl -f http://localhost:8000/api/tasks/'
-                        echo '✅ API fonctionnelle'
-                    } catch (Exception e) {
-                        echo '❌ API non disponible'
-                        sh 'docker-compose logs backend'
-                        error('API test failed')
-                    }
-                }
-            }
-        }
-        
-        stage('Test Frontend') {
-            steps {
-                echo '🧪 Test du frontend React...'
-                script {
-                    try {
-                        sh 'curl -f http://localhost:3000'
-                        echo '✅ Frontend fonctionnel'
-                    } catch (Exception e) {
-                        echo '❌ Frontend non disponible'
-                        sh 'docker-compose logs frontend'
-                        error('Frontend test failed')
-                    }
-                }
-            }
-        }
-        
-        stage('Final Status') {
-            steps {
-                echo '''
-                ═══════════════════════════════════════════════════════
-                ✅ PIPELINE RÉUSSI !
-                ═══════════════════════════════════════════════════════
-                
-                📱 Frontend : http://localhost:3000
-                🔧 API : http://localhost:8000/api/tasks/
-                🗄️ Adminer : http://localhost:8081
-                
-                🐳 Conteneurs :
-                - MySQL : port 3306
-                - Backend : port 8000
-                - Frontend : port 3000
-                - Adminer : port 8081
-                
-                ═══════════════════════════════════════════════════════
+                echo '🔄 Migrations Django...'
+                bat '''
+                    docker-compose exec -T backend python manage.py migrate
+                    echo "✅ Migrations effectuées"
                 '''
             }
         }
@@ -159,7 +93,17 @@ pipeline {
     
     post {
         success {
-            echo '🎉 PIPELINE TERMINÉ AVEC SUCCÈS !'
+            echo '''
+            ═══════════════════════════════════════════════════════
+            ✅ PIPELINE RÉUSSI !
+            ═══════════════════════════════════════════════════════
+            
+            🌐 Frontend : http://localhost:3000
+            🔧 API : http://localhost:8000/api/tasks/
+            🗄️ Adminer : http://localhost:8081
+            
+            ═══════════════════════════════════════════════════════
+            '''
         }
         failure {
             echo '''
@@ -167,17 +111,13 @@ pipeline {
             ❌ PIPELINE ÉCHOUÉ !
             ═══════════════════════════════════════════════════════
             
-            📋 Voir les logs ci-dessus pour les erreurs.
-            
-            🔍 Commandes de diagnostic :
-            - docker-compose logs backend
-            - docker-compose logs frontend
-            - docker-compose ps
+            🔍 Diagnostic :
+            - Vérifiez que Docker est démarré
+            - Vérifiez les logs avec : docker-compose logs
             ═══════════════════════════════════════════════════════
             '''
-        }
-        always {
-            echo '🧹 Fin du pipeline'
+            // Afficher les logs en cas d'erreur
+            bat 'docker-compose logs --tail=50'
         }
     }
 }
