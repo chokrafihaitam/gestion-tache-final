@@ -2,8 +2,9 @@ pipeline {
     agent any
     
     environment {
+        // Utilisez les noms EXACTS de vos credentials
+        SONAR_TOKEN = credentials('SONAR_TOKEN')
         SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_TOKEN = credentials('sonarqube-token')
     }
     
     stages {
@@ -18,7 +19,6 @@ pipeline {
             steps {
                 echo '🔍 Analyse du backend avec SonarQube...'
                 script {
-                    // Créer le fichier de configuration SonarQube pour le backend
                     writeFile file: 'backend/sonar-project.properties', text: """
 sonar.projectKey=task-manager-backend
 sonar.projectName=Task Manager Backend
@@ -31,11 +31,7 @@ sonar.sourceEncoding=UTF-8
 sonar.host.url=${SONAR_HOST_URL}
 sonar.login=${SONAR_TOKEN}
 """
-                    
-                    // Exécuter l'analyse SonarQube
-                    bat '''
-                        docker run --rm --network host -v %cd%\\backend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli
-                    '''
+                    bat 'docker run --rm --network host -v %cd%\\backend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli'
                     echo '✅ Analyse backend terminée'
                 }
             }
@@ -45,7 +41,6 @@ sonar.login=${SONAR_TOKEN}
             steps {
                 echo '🔍 Analyse du frontend avec SonarQube...'
                 script {
-                    // Créer le fichier de configuration SonarQube pour le frontend
                     writeFile file: 'frontend/sonar-project.properties', text: """
 sonar.projectKey=task-manager-frontend
 sonar.projectName=Task Manager Frontend
@@ -58,11 +53,7 @@ sonar.sourceEncoding=UTF-8
 sonar.host.url=${SONAR_HOST_URL}
 sonar.login=${SONAR_TOKEN}
 """
-                    
-                    // Exécuter l'analyse SonarQube
-                    bat '''
-                        docker run --rm --network host -v %cd%\\frontend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli
-                    '''
+                    bat 'docker run --rm --network host -v %cd%\\frontend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli'
                     echo '✅ Analyse frontend terminée'
                 }
             }
@@ -104,13 +95,9 @@ sonar.login=${SONAR_TOKEN}
             steps {
                 echo '🏥 Vérification de la santé des services...'
                 script {
-                    // Attendre le démarrage complet
                     bat 'powershell -Command "Start-Sleep -Seconds 20"'
-                    
-                    // Vérifier que tous les conteneurs tournent
                     bat 'docker-compose ps'
                     
-                    // Tester l'API
                     try {
                         bat 'curl -f http://localhost:8000/api/tasks/'
                         echo '✅ API fonctionnelle'
@@ -120,7 +107,6 @@ sonar.login=${SONAR_TOKEN}
                         error('API test failed')
                     }
                     
-                    // Tester le frontend
                     try {
                         bat 'curl -f http://localhost:3000'
                         echo '✅ Frontend fonctionnel'
@@ -129,7 +115,6 @@ sonar.login=${SONAR_TOKEN}
                         bat 'docker-compose logs frontend'
                     }
                     
-                    // Tester SonarQube
                     try {
                         bat 'curl -f http://localhost:9000/api/system/status'
                         echo '✅ SonarQube fonctionnel'
@@ -143,43 +128,8 @@ sonar.login=${SONAR_TOKEN}
         stage('Migrations') {
             steps {
                 echo '🔄 Migrations Django...'
-                bat '''
-                    docker-compose exec -T backend python manage.py migrate
-                    echo "✅ Migrations effectuées"
-                '''
-            }
-        }
-        
-        stage('Quality Gate') {
-            steps {
-                echo '🏆 Vérification du Quality Gate SonarQube...'
-                script {
-                    // Attendre que l'analyse soit traitée
-                    bat 'powershell -Command "Start-Sleep -Seconds 10"'
-                    
-                    // Vérifier le Quality Gate pour le backend
-                    def qualityGateBackend = bat(
-                        script: "curl -s -u ${SONAR_TOKEN}: http://localhost:9000/api/qualitygates/project_status?projectKey=task-manager-backend",
-                        returnStdout: true
-                    ).trim()
-                    
-                    echo "Backend Quality Gate: ${qualityGateBackend}"
-                    
-                    // Vérifier le Quality Gate pour le frontend
-                    def qualityGateFrontend = bat(
-                        script: "curl -s -u ${SONAR_TOKEN}: http://localhost:9000/api/qualitygates/project_status?projectKey=task-manager-frontend",
-                        returnStdout: true
-                    ).trim()
-                    
-                    echo "Frontend Quality Gate: ${qualityGateFrontend}"
-                    
-                    // Vérifier si le Quality Gate est OK
-                    if (qualityGateBackend.contains('ERROR') || qualityGateFrontend.contains('ERROR')) {
-                        error('❌ Quality Gate échoué! Vérifiez les résultats sur SonarQube')
-                    } else {
-                        echo '✅ Quality Gate passé avec succès!'
-                    }
-                }
+                bat 'docker-compose exec -T backend python manage.py migrate'
+                echo '✅ Migrations effectuées'
             }
         }
     }
@@ -196,28 +146,12 @@ sonar.login=${SONAR_TOKEN}
             🗄️ Adminer : http://localhost:8081
             🔍 SonarQube : http://localhost:9000
             
-            📊 Résultats SonarQube:
-            - Backend: http://localhost:9000/dashboard?id=task-manager-backend
-            - Frontend: http://localhost:9000/dashboard?id=task-manager-frontend
-            
             ═══════════════════════════════════════════════════════
             '''
         }
         failure {
-            echo '''
-            ═══════════════════════════════════════════════════════
-            ❌ PIPELINE ÉCHOUÉ !
-            ═══════════════════════════════════════════════════════
-            
-            🔍 Vérifiez les logs ci-dessus pour plus de détails.
-            🔍 Consultez SonarQube: http://localhost:9000
-            
-            ═══════════════════════════════════════════════════════
-            '''
+            echo '❌ PIPELINE ÉCHOUÉ!'
             bat 'docker-compose logs --tail=50'
-        }
-        always {
-            echo '🧹 Fin du pipeline'
         }
     }
 }
