@@ -19,7 +19,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
 
   backend:
     build: ./backend
@@ -56,14 +55,12 @@ services:
       - mysql
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: development  # Important: utiliser development en dev
+    build: ./frontend
     container_name: task_manager_frontend
     restart: unless-stopped
     environment:
       REACT_APP_API_URL: http://localhost:8000/api
+      CHOKIDAR_USEPOLLING: "true"  # Pour le hot-reload sur Windows
     ports:
       - "3000:3000"
     volumes:
@@ -73,6 +70,95 @@ services:
       - backend
     networks:
       - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+# services:
+#   mysql:
+#     image: mysql:8.0
+#     container_name: task_manager_mysql
+#     restart: unless-stopped
+#     environment:
+#       MYSQL_ROOT_PASSWORD: rootpassword
+#       MYSQL_DATABASE: task_manager
+#       MYSQL_USER: taskuser
+#       MYSQL_PASSWORD: taskpassword
+#     ports:
+#       - "3306:3306"
+#     volumes:
+#       - mysql_data:/var/lib/mysql
+#     networks:
+#       - app_network
+#     healthcheck:
+#       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#       start_period: 30s
+
+#   backend:
+#     build: ./backend
+#     container_name: task_manager_backend
+#     restart: unless-stopped
+#     environment:
+#       DEBUG: '1'
+#       DJANGO_SECRET_KEY: django-insecure-key-for-dev
+#       DATABASE_NAME: task_manager
+#       DATABASE_USER: taskuser
+#       DATABASE_PASSWORD: taskpassword
+#       DATABASE_HOST: task_manager_mysql
+#       DATABASE_PORT: '3306'
+#     ports:
+#       - "8000:8000"
+#     volumes:
+#       - ./backend:/app
+#     depends_on:
+#       mysql:
+#         condition: service_healthy
+#     networks:
+#       - app_network
+#     command: sh -c "sleep 10 && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+
+#   adminer:
+#     image: adminer:latest
+#     container_name: task_manager_adminer
+#     restart: unless-stopped
+#     ports:
+#       - "8081:8080"
+#     networks:
+#       - app_network
+#     depends_on:
+#       - mysql
+
+#   frontend:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#       target: development  # Important: utiliser development en dev
+#     container_name: task_manager_frontend
+#     restart: unless-stopped
+#     environment:
+#       REACT_APP_API_URL: http://localhost:8000/api
+#     ports:
+#       - "3000:3000"
+#     volumes:
+#       - ./frontend:/app
+#       - /app/node_modules
+#     depends_on:
+#       - backend
+#     networks:
+#       - app_network
+
+# networks:
+#   app_network:
+#     driver: bridge
+
+# volumes:
+#   mysql_data:
   # frontend:
   #   build: ./frontend
   #   container_name: task_manager_frontend
@@ -90,12 +176,6 @@ services:
   #     - app_network
   #   command: npm start
 
-networks:
-  app_network:
-    driver: bridge
-
-volumes:
-  mysql_data:
 # version: '3.8'
 
 # services:

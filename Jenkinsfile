@@ -45,31 +45,30 @@ pipeline {
             steps {
                 echo '🏥 Vérification de la santé des services...'
                 script {
-                    // Attendre avec PowerShell au lieu de timeout
-                    bat 'powershell -Command "Start-Sleep -Seconds 15"'
+                    // Attendre le démarrage complet
+                    bat 'powershell -Command "Start-Sleep -Seconds 20"'
                     
-                    // Vérifier l'API
-                    def apiStatus = bat(
-                        script: 'curl -s -o nul -w "%%{http_code}" http://localhost:8000/api/tasks/',
-                        returnStdout: true
-                    ).trim()
+                    // Vérifier que tous les conteneurs tournent
+                    bat 'docker-compose ps'
                     
-                    if (apiStatus == '200') {
-                        echo '✅ API OK (HTTP 200)'
-                    } else {
-                        echo "⚠️ API status: ${apiStatus}"
+                    // Tester l'API
+                    try {
+                        bat 'curl -f http://localhost:8000/api/tasks/'
+                        echo '✅ API fonctionnelle'
+                    } catch (Exception e) {
+                        echo '❌ API non disponible'
+                        bat 'docker-compose logs backend'
+                        error('API test failed')
                     }
                     
-                    // Vérifier le frontend
-                    def frontendStatus = bat(
-                        script: 'curl -s -o nul -w "%%{http_code}" http://localhost:3000',
-                        returnStdout: true
-                    ).trim()
-                    
-                    if (frontendStatus == '200') {
-                        echo '✅ Frontend OK (HTTP 200)'
-                    } else {
-                        echo "⚠️ Frontend status: ${frontendStatus}"
+                    // Tester le frontend
+                    try {
+                        bat 'curl -f http://localhost:3000'
+                        echo '✅ Frontend fonctionnel'
+                    } catch (Exception e) {
+                        echo '⚠️ Frontend non disponible'
+                        bat 'docker-compose logs frontend'
+                        // Ne pas échouer pour le frontend, il peut être en train de compiler
                     }
                 }
             }
@@ -104,9 +103,6 @@ pipeline {
             echo '''
             ═══════════════════════════════════════════════════════
             ❌ PIPELINE ÉCHOUÉ !
-            ═══════════════════════════════════════════════════════
-            
-            🔍 Diagnostic : Vérifiez les logs ci-dessus
             ═══════════════════════════════════════════════════════
             '''
             bat 'docker-compose logs --tail=50'

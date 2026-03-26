@@ -1,12 +1,9 @@
-# Development stage
-FROM node:18-alpine as development
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Copier les fichiers package
+# Installer les dépendances
 COPY package*.json ./
-
-# Installer toutes les dépendances
 RUN npm install --legacy-peer-deps
 
 # Copier le code source
@@ -16,35 +13,8 @@ EXPOSE 3000
 
 CMD ["npm", "start"]
 
-# Build stage
-FROM node:18-alpine as build
-
-WORKDIR /app
-
-# Copier les fichiers package
-COPY package*.json ./
-
-# Installer toutes les dépendances
-RUN npm install --legacy-peer-deps
-
-# Copier le code source
-COPY . .
-
-# Construire l'application
-RUN npm run build
-
-# Production stage with nginx
-FROM nginx:alpine as production
-
-# Copier les fichiers build
-COPY --from=build /app/build /usr/share/nginx/html
-
 # Nginx utilise une configuration par défaut qui fonctionne
 # Pas besoin de copier nginx.conf
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
 # FROM node:18-alpine as development
 
 # WORKDIR /app
