@@ -1,0 +1,172 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: task_manager_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: task_manager
+      MYSQL_USER: taskuser
+      MYSQL_PASSWORD: taskpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build: ./backend
+    container_name: task_manager_backend
+    restart: unless-stopped
+    environment:
+      DEBUG: '1'
+      DJANGO_SECRET_KEY: django-insecure-key-for-dev
+      DATABASE_NAME: task_manager
+      DATABASE_USER: taskuser
+      DATABASE_PASSWORD: taskpassword
+      DATABASE_HOST: task_manager_mysql
+      DATABASE_PORT: '3306'
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - app_network
+    command: sh -c "sleep 10 && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+
+  adminer:
+    image: adminer:latest
+    container_name: task_manager_adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    networks:
+      - app_network
+    depends_on:
+      - mysql
+
+  frontend:
+    build: ./frontend
+    container_name: task_manager_frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: http://localhost:8000/api
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - app_network
+    command: npm start
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+# version: '3.8'
+
+# services:
+#   mysql:
+#     image: mysql:8.0
+#     container_name: task_manager_mysql
+#     restart: unless-stopped
+#     environment:
+#       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+#       MYSQL_DATABASE: ${MYSQL_DATABASE:-task_manager}
+#       MYSQL_USER: ${MYSQL_USER:-taskuser}
+#       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskpassword}
+#     ports:
+#       - "3306:3306"
+#     volumes:
+#       - mysql_data:/var/lib/mysql
+#       - ./mysql/init:/docker-entrypoint-initdb.d
+#     networks:
+#       - task_manager_network
+#     healthcheck:
+#       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+#       timeout: 20s
+#       retries: 10
+
+#   adminer:
+#     build:
+#       context: ./adminer
+#       dockerfile: Dockerfile
+#     container_name: task_manager_adminer
+#     restart: unless-stopped
+#     ports:
+#       - "8081:8081"  # Maintenant les deux ports sont 8081
+#     networks:
+#       - task_manager_network
+#     depends_on:
+#       - mysql
+
+#   backend:
+#     build:
+#       context: ./backend
+#       dockerfile: Dockerfile
+#       target: development
+#     container_name: task_manager_backend
+#     restart: unless-stopped
+#     environment:
+#       DEBUG: ${DEBUG:-1}
+#       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-key-for-dev}
+#       DATABASE_NAME: ${MYSQL_DATABASE:-task_manager}
+#       DATABASE_USER: ${MYSQL_USER:-taskuser}
+#       DATABASE_PASSWORD: ${MYSQL_PASSWORD:-taskpassword}
+#       DATABASE_HOST: mysql
+#       DATABASE_PORT: 3307
+#       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+#       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+#     ports:
+#       - "8000:8000"
+#     volumes:
+#       - ./backend:/app
+#       - /app/__pycache__
+#     depends_on:
+#       mysql:
+#         condition: service_healthy
+#     networks:
+#       - task_manager_network
+#     command: python manage.py runserver 0.0.0.0:8000
+
+#   frontend:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#       target: development
+#     container_name: task_manager_frontend
+#     restart: unless-stopped
+#     environment:
+#       REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000/api}
+#     ports:
+#       - "3000:3000"
+#     volumes:
+#       - ./frontend:/app
+#       - /app/node_modules
+#     depends_on:
+#       - backend
+#     networks:
+#       - task_manager_network
+#     command: npm start
+
+# networks:
+#   task_manager_network:
+#     driver: bridge
+
+# volumes:
+#   mysql_data:
