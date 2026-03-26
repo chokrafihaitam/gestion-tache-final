@@ -101,6 +101,7 @@ const TaskForm = ({ onSubmit, initialData, onCancel }) => {
             Annuler
           </button>
         )}
+        
       </div>
     </form>
   );
