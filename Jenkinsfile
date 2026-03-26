@@ -1,11 +1,6 @@
 pipeline {
     agent any
     
-    environment {
-        // Variables d'environnement pour Windows
-        DOCKER_COMPOSE = 'docker-compose'
-    }
-    
     stages {
         stage('Checkout') {
             steps {
@@ -26,7 +21,7 @@ pipeline {
                     docker build -t task-manager-frontend:latest ./frontend
                     if %errorlevel% neq 0 exit /b %errorlevel%
                     
-                    echo "✅ Images construites avec succès"
+                    echo "✅ Images construites"
                 '''
             }
         }
@@ -36,7 +31,7 @@ pipeline {
                 echo '🚀 Déploiement...'
                 bat '''
                     echo "Arrêt des anciens conteneurs..."
-                    docker-compose down
+                    docker-compose down || exit 0
                     
                     echo "Démarrage des nouveaux conteneurs..."
                     docker-compose up -d
@@ -50,8 +45,8 @@ pipeline {
             steps {
                 echo '🏥 Vérification de la santé des services...'
                 script {
-                    // Attendre 15 secondes
-                    bat 'timeout /t 15 /nobreak'
+                    // Attendre avec PowerShell au lieu de timeout
+                    bat 'powershell -Command "Start-Sleep -Seconds 15"'
                     
                     // Vérifier l'API
                     def apiStatus = bat(
@@ -111,12 +106,9 @@ pipeline {
             ❌ PIPELINE ÉCHOUÉ !
             ═══════════════════════════════════════════════════════
             
-            🔍 Diagnostic :
-            - Vérifiez que Docker est démarré
-            - Vérifiez les logs avec : docker-compose logs
+            🔍 Diagnostic : Vérifiez les logs ci-dessus
             ═══════════════════════════════════════════════════════
             '''
-            // Afficher les logs en cas d'erreur
             bat 'docker-compose logs --tail=50'
         }
     }
