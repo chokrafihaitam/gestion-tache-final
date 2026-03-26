@@ -3,6 +3,7 @@ pipeline {
     
     environment {
         SONAR_TOKEN = credentials('SONAR_TOKEN')
+        SONAR_HOST_URL = 'http://host.docker.internal:9000'
     }
     
     stages {
@@ -17,7 +18,9 @@ pipeline {
             steps {
                 echo '🧹 Nettoyage des conteneurs existants...'
                 bat '''
+                    echo "Arrêt des conteneurs..."
                     docker stop task_manager_mysql task_manager_backend task_manager_frontend task_manager_adminer task_manager_sonarqube task_manager_sonarqube_db 2>nul || exit 0
+                    echo "Suppression des conteneurs..."
                     docker rm task_manager_mysql task_manager_backend task_manager_frontend task_manager_adminer task_manager_sonarqube task_manager_sonarqube_db 2>nul || exit 0
                     echo "✅ Nettoyage terminé"
                 '''
@@ -36,33 +39,10 @@ pipeline {
             }
         }
         
-        stage('Get SonarQube IP') {
-            steps {
-                echo '🔍 Récupération de l\'IP de SonarQube...'
-                script {
-                    // Récupérer l'IP de SonarQube
-                    def sonarIp = bat(
-                        script: 'docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" task_manager_sonarqube',
-                        returnStdout: true
-                    ).trim()
-                    
-                    echo "SonarQube IP: ${sonarIp}"
-                    
-                    // Définir la variable d'environnement
-                    env.SONAR_HOST_URL = "http://${sonarIp}:9000"
-                }
-            }
-        }
-        
         stage('SonarQube Backend') {
             steps {
                 echo '🔍 Analyse du backend avec SonarQube...'
                 script {
-                    def sonarIp = bat(
-                        script: 'docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" task_manager_sonarqube',
-                        returnStdout: true
-                    ).trim()
-                    
                     writeFile file: 'backend/sonar-project.properties', text: """
 sonar.projectKey=task-manager-backend
 sonar.projectName=Task Manager Backend
@@ -72,11 +52,14 @@ sonar.exclusions=**/migrations/**,**/tests/**,**/__pycache__/**,**/static/**,**/
 sonar.language=py
 sonar.python.version=3.11
 sonar.sourceEncoding=UTF-8
-sonar.host.url=http://${sonarIp}:9000
+sonar.host.url=${SONAR_HOST_URL}
 sonar.login=${SONAR_TOKEN}
 """
-                    bat "docker run --rm --network host -v %cd%\\backend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli"
-                    echo '✅ Analyse backend terminée'
+                    bat '''
+                        echo "Lancement de l'analyse SonarQube pour le backend..."
+                        docker run --rm --network host -v %cd%\\backend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli
+                        echo "✅ Analyse backend terminée"
+                    '''
                 }
             }
         }
@@ -85,11 +68,6 @@ sonar.login=${SONAR_TOKEN}
             steps {
                 echo '🔍 Analyse du frontend avec SonarQube...'
                 script {
-                    def sonarIp = bat(
-                        script: 'docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" task_manager_sonarqube',
-                        returnStdout: true
-                    ).trim()
-                    
                     writeFile file: 'frontend/sonar-project.properties', text: """
 sonar.projectKey=task-manager-frontend
 sonar.projectName=Task Manager Frontend
@@ -99,11 +77,14 @@ sonar.exclusions=**/node_modules/**,**/build/**,**/coverage/**,**/*.test.js,**/*
 sonar.language=js
 sonar.javascript.lcov.reportPaths=coverage/lcov.info
 sonar.sourceEncoding=UTF-8
-sonar.host.url=http://${sonarIp}:9000
+sonar.host.url=${SONAR_HOST_URL}
 sonar.login=${SONAR_TOKEN}
 """
-                    bat "docker run --rm --network host -v %cd%\\frontend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli"
-                    echo '✅ Analyse frontend terminée'
+                    bat '''
+                        echo "Lancement de l'analyse SonarQube pour le frontend..."
+                        docker run --rm --network host -v %cd%\\frontend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli
+                        echo "✅ Analyse frontend terminée"
+                    '''
                 }
             }
         }
@@ -160,30 +141,29 @@ sonar.login=${SONAR_TOKEN}
         }
         
         stage('Quality Gate') {
-            when {
-                expression { return true }
-            }
             steps {
-                echo '🏆 Vérification du Quality Gate...'
+                echo '🏆 Vérification du Quality Gate SonarQube...'
                 script {
                     bat 'powershell -Command "Start-Sleep -Seconds 15"'
                     
-                    def sonarIp = bat(
-                        script: 'docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" task_manager_sonarqube',
-                        returnStdout: true
-                    ).trim()
-                    
                     def qualityGateBackend = bat(
-                        script: "curl -s -u ${SONAR_TOKEN}: http://${sonarIp}:9000/api/qualitygates/project_status?projectKey=task-manager-backend",
+                        script: "curl -s -u ${SONAR_TOKEN}: http://host.docker.internal:9000/api/qualitygates/project_status?projectKey=task-manager-backend",
                         returnStdout: true
                     ).trim()
                     
                     echo "Backend Quality Gate: ${qualityGateBackend}"
                     
-                    if (qualityGateBackend.contains('OK')) {
-                        echo '✅ Quality Gate backend OK'
+                    def qualityGateFrontend = bat(
+                        script: "curl -s -u ${SONAR_TOKEN}: http://host.docker.internal:9000/api/qualitygates/project_status?projectKey=task-manager-frontend",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "Frontend Quality Gate: ${qualityGateFrontend}"
+                    
+                    if (qualityGateBackend.contains('OK') && qualityGateFrontend.contains('OK')) {
+                        echo '✅ Quality Gate passé avec succès!'
                     } else {
-                        echo '⚠️ Quality Gate backend en attente'
+                        echo '⚠️ Quality Gate en attente de traitement...'
                     }
                 }
             }
@@ -202,11 +182,22 @@ sonar.login=${SONAR_TOKEN}
             🗄️ Adminer : http://localhost:8081
             🔍 SonarQube : http://localhost:9000
             
+            📊 Résultats SonarQube:
+            - Backend: http://localhost:9000/dashboard?id=task-manager-backend
+            - Frontend: http://localhost:9000/dashboard?id=task-manager-frontend
+            
             ═══════════════════════════════════════════════════════
             '''
         }
         failure {
-            echo '❌ PIPELINE ÉCHOUÉ!'
+            echo '''
+            ═══════════════════════════════════════════════════════
+            ❌ PIPELINE ÉCHOUÉ !
+            ═══════════════════════════════════════════════════════
+            
+            🔍 Vérifiez les logs ci-dessus pour plus de détails.
+            ═══════════════════════════════════════════════════════
+            '''
             bat 'docker-compose logs --tail=50'
         }
     }
