@@ -4,6 +4,8 @@ pipeline {
     environment {
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_TOKEN = credentials('sonarqube-token')
+        SONARQUBE_INSTALLATION = 'SonarQube'
+
     }
     
     stages {
@@ -13,33 +15,49 @@ pipeline {
                 checkout scm
             }
         }
-        
-        stage('SonarQube Analysis Backend') {
+        stage('SonarQube analysis') {
             steps {
-                echo '🔍 Analyse du backend avec SonarQube...'
-                script {
-                    // Créer le fichier de configuration SonarQube pour le backend
-                    writeFile file: 'backend/sonar-project.properties', text: """
-sonar.projectKey=task-manager-backend
-sonar.projectName=Task Manager Backend
-sonar.projectVersion=1.0
-sonar.sources=.
-sonar.exclusions=**/migrations/**,**/tests/**,**/__pycache__/**,**/static/**,**/media/**
-sonar.language=py
-sonar.python.version=3.11
-sonar.sourceEncoding=UTF-8
-sonar.host.url=${SONAR_HOST_URL}
-sonar.login=${SONAR_TOKEN}
-"""
-                    
-                    // Exécuter l'analyse SonarQube
-                    bat '''
-                        docker run --rm --network host -v %cd%\backend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli
+                withSonarQubeEnv("${env.SONARQUBE_INSTALLATION}") {
+                    sh '''
+                        set -e
+                        if [ -z "${SONAR_HOST_URL:-}" ]; then
+                          echo "ERROR: SONAR_HOST_URL is empty. In Jenkins: Manage Jenkins → Configure System → SonarQube servers, set Server URL to an address this agent can reach (not localhost if SonarQube runs elsewhere or Jenkins is in Docker)."
+                          exit 1
+                        fi
+                        bunx sonarqube-scanner \
+                          -Dsonar.host.url="$SONAR_HOST_URL" \
+                          -Dsonar.token="${SONAR_AUTH_TOKEN:-}"
                     '''
-                    echo '✅ Analyse backend terminée'
                 }
             }
         }
+        
+//         stage('SonarQube Analysis Backend') {
+//             steps {
+//                 echo '🔍 Analyse du backend avec SonarQube...'
+//                 script {
+//                     // Créer le fichier de configuration SonarQube pour le backend
+//                     writeFile file: 'backend/sonar-project.properties', text: """
+// sonar.projectKey=task-manager-backend
+// sonar.projectName=Task Manager Backend
+// sonar.projectVersion=1.0
+// sonar.sources=.
+// sonar.exclusions=**/migrations/**,**/tests/**,**/__pycache__/**,**/static/**,**/media/**
+// sonar.language=py
+// sonar.python.version=3.11
+// sonar.sourceEncoding=UTF-8
+// sonar.host.url=${SONAR_HOST_URL}
+// sonar.login=${SONAR_TOKEN}
+// """
+                    
+//                     // Exécuter l'analyse SonarQube
+//                     bat '''
+//                         docker run --rm --network host -v %cd%\backend:/usr/src -w /usr/src sonarsource/sonar-scanner-cli
+//                     '''
+//                     echo '✅ Analyse backend terminée'
+//                 }
+//             }
+//         }
         
         stage('SonarQube Analysis Frontend') {
             steps {
