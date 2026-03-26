@@ -56,7 +56,10 @@ services:
       - mysql
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development  # Important: utiliser development en dev
     container_name: task_manager_frontend
     restart: unless-stopped
     environment:
@@ -70,7 +73,22 @@ services:
       - backend
     networks:
       - app_network
-    command: npm start
+  # frontend:
+  #   build: ./frontend
+  #   container_name: task_manager_frontend
+  #   restart: unless-stopped
+  #   environment:
+  #     REACT_APP_API_URL: http://localhost:8000/api
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - app_network
+  #   command: npm start
 
 networks:
   app_network:
